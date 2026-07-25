@@ -68,6 +68,7 @@ clone_dir() {
 
 did=""
 failed=""
+skipped_runs=""
 
 clones=$(wt_cfg_list "$main" '.provision.clone')
 [ -n "$clones" ] || { [ -d "$main/node_modules" ] && clones="node_modules"; }
@@ -104,15 +105,29 @@ done <<EOF
 $(wt_cfg_list "$main" '.provision.mkdir')
 EOF
 
+# `run` is the one key that executes repo-supplied strings, so it is the one key
+# that needs the machine owner's consent. Claude Code makes project hooks in
+# .claude/settings.json go through a trust prompt; a repo file read by our own
+# hook would otherwise be a second hook channel with no such gate — clone a
+# hostile repo, open one worktree session, and its commands run silently.
+# So: the repo may PROPOSE commands, the machine owner opts in per repo, once.
 runs=$(wt_cfg_list "$main" '.provision.run')
 if [ -n "$runs" ] && { [ "$fresh" = 1 ] || [ -n "$did" ]; }; then
-	while IFS= read -r cmd; do
-		[ -n "$cmd" ] || continue
-		if (cd "$wt" && eval "$cmd" >/dev/null 2>&1); then did="$did ${cmd%% *}"
-		else failed="$failed ${cmd%% *}"; fi
-	done <<EOF
+	if wt_run_allowed "$main"; then
+		while IFS= read -r cmd; do
+			[ -n "$cmd" ] || continue
+			if (cd "$wt" && eval "$cmd" >/dev/null 2>&1); then did="$did ${cmd%% *}"
+			else failed="$failed ${cmd%% *}"; fi
+		done <<EOF
 $runs
 EOF
+	else
+		skipped_runs=$(printf '%s' "$runs" | tr '\n' ',' | sed 's/,$//')
+	fi
+fi
+
+if [ -n "$skipped_runs" ]; then
+	warn="$warn.claude/wt.json의 run을 실행하지 않았다($skipped_runs). 이 레포에서 허용하려면 \`echo '$main' >> ~/.claude/wt-run-allow\`. "
 fi
 
 if [ -n "$failed" ]; then

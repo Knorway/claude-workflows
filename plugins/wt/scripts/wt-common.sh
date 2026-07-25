@@ -61,6 +61,31 @@ wt_root() {
 	esac
 }
 
+# May this repo's `provision.run` commands actually run on this machine?
+#
+# Every other wt.json key names a path to copy; `run` names a COMMAND, and the
+# file is committed — so a cloned repo would otherwise get silent code execution
+# the first time someone opens a worktree session in it. Claude Code puts
+# project hooks behind a trust prompt for exactly this reason; a hook of ours
+# reading a repo file must not become a way around that prompt.
+#
+# The machine owner opts in once per repo, by absolute path:
+#
+#   echo /path/to/repo >> ~/.claude/wt-run-allow
+#
+# Blank lines and `#` comments are ignored. Nothing else in provisioning is
+# gated — copying and cloning paths cannot execute anything.
+wt_run_allowed() {
+	local main=$1 f="${WT_RUN_ALLOW_FILE:-$HOME/.claude/wt-run-allow}" line
+	[ -f "$f" ] || return 1
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in ''|'#'*) continue ;; esac
+		line=${line%"${line##*[! ]}"}                 # trailing spaces
+		[ "$(wt_abs "$line")" = "$(wt_abs "$main")" ] && return 0
+	done < "$f"
+	return 1
+}
+
 # Branch new worktrees are cut from: config, else main, else master, else the
 # remote's HEAD. Prints nothing if none of those exist (caller uses HEAD).
 wt_base_branch() {
