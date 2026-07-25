@@ -25,7 +25,11 @@ Claude Code 플러그인 마켓플레이스. 지금은 플러그인 하나가 �
 ## 개발
 
 ```bash
-claude --plugin-dir ~/Desktop/claude-workflows/plugins/wt   # 설치 없이 로드
-claude plugin validate ~/Desktop/claude-workflows/plugins/wt --strict
-/reload-plugins                                             # 세션 중 반영
+claude --plugin-dir ./plugins/wt              # 설치본 무시하고 소스를 직접 로드
+claude plugin validate ./plugins/wt --strict
+/reload-plugins                               # 세션 중 반영
 ```
+
+**설치된 플러그인은 소스 폴더가 아니라 캐시 복사본을 읽는다** — 고친 걸 실제로
+반영하려면 `plugin.json`의 `version`을 올려야 한다. 전체 절차는
+[플러그인 README의 "이 플러그인을 고치고 배포하기"](plugins/wt/README.md#이-플러그인을-고치고-배포하기).

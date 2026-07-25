@@ -29,6 +29,92 @@ claude --worktree          # 워크트리 + 브랜치 생성 후 그 안에서 �
 
 Claude 세션 없이 워크트리만 필요하면(예: 두 번째 개발 서버) `wt-new <name>`.
 
+## 이 플러그인을 고치고 배포하기
+
+### 알아야 할 사실 하나
+
+**설치된 플러그인은 소스 폴더를 읽지 않는다.**
+`~/.claude/plugins/cache/<마켓플레이스>/<플러그인>/<버전>/` 에 **복사본**으로 들어간다.
+그래서 소스만 고치고 `plugin update`를 하면 이렇게 끝난다:
+
+```
+✔ wt is already at the latest version (0.2.0).
+```
+
+**`plugin.json`의 `version`을 올리는 것이 업데이트의 트리거다.**
+
+### 1. 개발 루프 — 설치본을 무시하고 소스를 직접 읽기
+
+```bash
+claude --plugin-dir <경로>/claude-workflows/plugins/wt
+```
+
+버전을 올릴 필요도 커밋할 필요도 없다. 세션 도중 고쳤으면 `/reload-plugins`.
+만드는 동안은 이것만 쓰면 된다.
+
+### 2. 배포 — 확정할 때
+
+```bash
+#   1) 고친다
+#   2) plugins/wt/.claude-plugin/plugin.json 의 version 을 올린다   ← 필수
+claude plugin validate ./plugins/wt --strict
+git commit && git push
+```
+
+### 3. 적용
+
+**최초 1회.** 소비자 레포가 `.claude/settings.json`에 마켓플레이스를 선언해 두면
+(아래 "레포에 붙이기") 폴더를 신뢰할 때 설치 안내가 뜬다. 손으로 하려면:
+
+```bash
+claude plugin marketplace add Knorway/claude-workflows
+claude plugin install wt@claude-workflows --scope project
+```
+
+**이후.** 카탈로그를 당기고, 플러그인을 올리고, 재시작한다:
+
+```bash
+claude plugin marketplace update claude-workflows
+claude plugin update wt@claude-workflows --scope project
+# → "Restart to apply changes"
+```
+
+`--scope project`를 빼면 사용자 스코프를 보고
+`✘ Plugin "wt" is not installed at scope user` 로 실패한다. 설치할 때 쓴 스코프를
+업데이트에도 그대로 써야 한다.
+
+### 마켓플레이스를 로컬 디렉터리로 등록한 경우
+
+`claude plugin marketplace add <경로>` 로 등록하면 소스가 GitHub가 아니라 그 폴더가
+된다. 그러면 **푸시하지 않아도** `marketplace update`가 로컬 작업본을 읽는다 — 공개
+전에 실물로 돌려볼 수 있다. 뒤집으면 **푸시를 잊으면 그 머신만 최신**이다.
+
+소비자 레포가 `extraKnownMarketplaces`로 GitHub 소스를 선언해도 **이미 등록된 쪽이
+이긴다.** GitHub로 통일하려면 지우고 다시 넣는다:
+
+```bash
+claude plugin marketplace remove claude-workflows
+claude plugin marketplace add Knorway/claude-workflows
+```
+
+## 레포에 붙이기
+
+소비자 레포의 `.claude/settings.json`에 **두 가지**를 쓴다. `enabledPlugins`만 쓰면
+마켓플레이스 이름이 그 머신의 사용자 설정으로만 풀리고, 새로 클론한 사람에게는
+이름이 안 풀린다. **플러그인 부재는 에러가 아니라 무동작**이라 훅이 조용히 사라지고
+`claude --worktree`가 기본값대로 repo 안에 워크트리를 만든다.
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "claude-workflows": {
+      "source": { "source": "github", "repo": "Knorway/claude-workflows" }
+    }
+  },
+  "enabledPlugins": { "wt@claude-workflows": true }
+}
+```
+
 ## 레포별 설정 — `.claude/wt.json` (전부 선택)
 
 ```jsonc
