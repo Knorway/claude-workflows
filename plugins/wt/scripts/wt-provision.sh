@@ -34,14 +34,32 @@ if [ -z "$wt" ]; then
 	[ -n "$wt" ] || wt=$PWD
 fi
 
-emit() {   # hook mode talks to the user through a systemMessage; by hand, stdout
-	if [ "$hook" = 1 ]; then jq -nc --arg m "$1" '{systemMessage:$m}'
-	else printf '%s\n' "$1"; fi
+# Hook mode talks to the user through a systemMessage; by hand, plain stdout.
+# The no-jq branch exists because the one message that matters most — "jq is
+# missing" — would otherwise be the one message we cannot print. Messages here
+# are our own literals, and the escape covers the two characters JSON forbids
+# raw in a string anyway.
+emit() {
+	if [ "$hook" != 1 ]; then printf '%s\n' "$1"; return; fi
+	if command -v jq >/dev/null 2>&1; then
+		jq -nc --arg m "$1" '{systemMessage:$m}'
+	else
+		printf '{"systemMessage":"%s"}\n' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+	fi
 }
 
 main=$(wt_primary "$wt")
 [ -n "$main" ] || exit 0                      # not a git repo: nothing to do
 [ "$(wt_abs "$main")" != "$(wt_abs "$wt")" ] || exit 0   # primary checkout
+
+# Config reads degrade to empty without jq, which would otherwise look like a
+# repo that asked for nothing — a worktree missing its .env and its generated
+# code, reported as a success. Carried into the final message rather than
+# emitted here: a hook must write ONE JSON object, not two.
+warn=""
+if [ -f "$main/.claude/wt.json" ] && ! command -v jq >/dev/null 2>&1; then
+	warn="jq가 없어 .claude/wt.json을 읽지 못했다(복사·생성·실행 건너뜀). "
+fi
 
 # Copy-on-write where the filesystem supports it, a plain copy where it doesn't.
 clone_dir() {
@@ -98,7 +116,9 @@ EOF
 fi
 
 if [ -n "$failed" ]; then
-	emit "worktree 프로비저닝 경고 — 실패:$failed${did:+ / 완료:$did}"
+	emit "worktree 프로비저닝 경고: ${warn}실패:$failed${did:+ / 완료:$did}"
+elif [ -n "$warn" ]; then
+	emit "worktree 프로비저닝 경고: ${warn}완료:${did:- 없음}"
 elif [ -n "$did" ]; then
 	emit "worktree 프로비저닝 완료 —$did"
 elif [ "$hook" != 1 ]; then
