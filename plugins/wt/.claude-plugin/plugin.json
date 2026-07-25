@@ -1,11 +1,11 @@
 {
 	"name": "wt",
 	"displayName": "Worktree Workflow",
-	"version": "0.2.1",
-	"description": "Parallel work in git worktrees: out-of-repo worktree hooks, copy-on-write provisioning, a contention-free TODO claim command, and a secret-scanning PR command.",
+	"version": "0.3.0",
+	"description": "Parallel work in git worktrees: out-of-repo worktree hooks, copy-on-write provisioning, a contention-free TODO claim command, a secret-scanning PR command, and a fan-out code review with adversarial verification.",
 	"author": {
 		"name": "Knorway"
 	},
 	"repository": "https://github.com/Knorway/claude-workflows",
-	"keywords": ["worktree", "parallel", "todo", "workflow"]
+	"keywords": ["worktree", "parallel", "todo", "review", "workflow"]
 }

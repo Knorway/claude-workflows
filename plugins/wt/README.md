@@ -15,7 +15,9 @@
 | `plan-nudge.sh` | UserPromptSubmit | plan 모드가 아니면 제안하라고 모델에게만 귀띔 |
 | `/wt:todo` | 커맨드 | 메인의 `TODO.md` 한 파일에서 경합 없이 항목을 점유 |
 | `/wt:remote-push` | 커맨드 | 비밀키 스캔 → 커밋 → 푸시 → PR |
-| `wt-todo`, `wt-new` | PATH 실행파일 | 위 둘의 셸 진입점 |
+| `/wt:review` | 커맨드 | 문맥 없는 리뷰어 여럿 병렬 → 반증 검증 → CONFIRMED만 수정 |
+| `wt:reviewer`, `wt:refuter` | 서브에이전트 | `/wt:review`가 띄우는 읽기 전용 리뷰어/회의론자 |
+| `wt-todo`, `wt-new` | PATH 실행파일 | todo/워크트리의 셸 진입점 |
 
 ## 쓰는 법
 
@@ -27,7 +29,16 @@ claude --worktree          # 워크트리 + 브랜치 생성 후 그 안에서 �
 이후 세션 시작은 즉시. 끝나면 세션 종료 시 WorktreeRemove 훅이 정리하고, 커밋 안 된
 작업이 남아 있으면 **지우지 않고 남겨 둔다.**
 
-Claude 세션 없이 워크트리만 필요하면(예: 두 번째 개발 서버) `wt-new <name>`.
+세션을 새로 열지 않고 워크트리만 만들려면(예: 두 번째 개발 서버) `wt-new <name>`.
+`wt-new`·`wt-todo`는 플러그인이 **Claude Code 세션의 PATH 끝에 붙여주는** 실행파일이라
+세션 안에서만 이름으로 잡힌다. 평범한 터미널에서도 쓰려면 셸 설정에 직접 넣는다:
+
+```bash
+export PATH="$PATH:<플러그인 경로>/bin"   # 설치본은 ~/.claude/plugins/cache/<마켓>/wt/<버전>/bin
+```
+
+버전이 올라가면 캐시 경로가 바뀌므로, 소스 체크아웃 쪽 `plugins/wt/bin`을 가리키는
+편이 덜 깨진다.
 
 ## 이 플러그인을 고치고 배포하기
 
@@ -202,6 +213,29 @@ APFS `cp -c`는 copy-on-write라 수 GB짜리 `node_modules`를 복제해도 실
   스크래치패드라야 브랜치 전환이 내용을 흔들지 않는다.
 
 셸에서 직접: `wt-todo list | add "<메모>" | claim <줄번호…> | release | mine`.
+
+## `/wt:review` — 편향 없는 리뷰
+
+구현한 세션이 자기 코드를 다시 읽으면 자기 합리화까지 물려받는다. 이 커맨드는
+**문맥이 전혀 없는 서브에이전트**를 렌즈별로 병렬로 띄우고, 나온 지적마다 **반증
+담당**을 붙여 거른 뒤, 살아남은 것(CONFIRMED)만 고친다.
+
+```bash
+/wt:review              # 현재 브랜치 vs base — 렌즈 3, 반증 1표
+/wt:review 28           # PR #28
+/wt:review --quick      # 렌즈 2, 반증·수정 없음 (훑어보기)
+/wt:review --deep       # 렌즈 5, 반증 3표 과반
+```
+
+- **diff 원문은 오케스트레이터 문맥에 올라가지 않는다.** `--stat`만 보고, 원문은 각
+  서브에이전트가 자기 문맥에서 직접 읽는다 — 이 커맨드의 비용을 결정하는 규칙이다.
+- 리뷰어에게는 **Edit/Write가 없다.** 리뷰어는 절대 고치지 않는다.
+- PLAUSIBLE은 사람이 고르고, REFUTED도 화면에 남긴다 — 무엇이 걸러졌는지 보여야
+  걸러낸다는 사실을 신뢰할 수 있다.
+- 커밋하지 않는다. 커밋·푸시는 `/wt:remote-push`의 일이다.
+
+왜 이 모양인지(독립성 등급, 비용 모델, 완전 자동 루프의 함정, CI로 올리는 법)는
+[`docs/review-loop.md`](../../docs/review-loop.md).
 
 ## plan-nudge
 
