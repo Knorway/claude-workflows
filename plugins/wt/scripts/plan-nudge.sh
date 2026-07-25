@@ -8,9 +8,16 @@
 # history — no marker files. Silent in plan mode, and silent whenever the mode
 # field is absent (never guess).
 #
-# One carve-out: a /wt:todo selection reply must claim before any plan-mode
-# proposal, or another tab can grab the same item while this session explores.
-# The injected text states that exception explicitly.
+# One carve-out: a /wt:todo selection reply must claim FIRST — before any
+# plan-mode proposal or EnterPlanMode call — or another tab can grab the same
+# item while this session explores. There the model doesn't propose at all: it
+# claims, then enters plan mode itself. The injected text states that exception
+# explicitly.
+#
+# The carve-out only has teeth in a non-plan session, which is the only kind this
+# hook fires in anyway: plan mode blocks every write, claim included, so a repo
+# whose defaultMode is `plan` can't claim without a human toggling out first.
+# That trade-off is the repo owner's call, not this plugin's — see commands/todo.md.
 set -euo pipefail
 
 input=$(cat)
@@ -26,8 +33,9 @@ ctx=$(cat <<EOF
 (shift+tab)"를 한 번만 제안하라 — 그래야 사용자가 착수 전에 플랜을 검토할 수 있다.
 단발 질문·사소한 수정이거나, 이미 이 대화에서 제안했거나 사용자가 거절했으면
 조용히 넘어가라. 예외: 이 프롬프트가 TODO 목록에 대한 번호 선택 답장이면, plan
-모드 제안을 포함해 다른 무엇보다 먼저 todo.sh claim을 실행해 점유를 박아야 한다
-— plan 모드 제안은 claim이 끝난 뒤에만 하라. 이 안내는 사용자에게 보이지 않는다.
+모드 제안이나 EnterPlanMode를 포함해 다른 무엇보다 먼저 \`wt-todo claim\`을 실행해
+점유를 박아야 한다. 그 뒤 항목이 사소하지 않으면 — 이때는 묻지 말고 — 곧바로
+EnterPlanMode로 진입해 탐색·설계를 이어가라. 이 안내는 사용자에게 보이지 않는다.
 EOF
 )
 

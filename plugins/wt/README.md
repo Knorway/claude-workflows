@@ -265,6 +265,11 @@ plan 모드가 아닐 때 UserPromptSubmit에 **모델에게만 보이는** 안�
 - SessionStart 훅에는 `permission_mode`가 **없어서** 세션 시작 시점엔 판단할 수 없다.
   그래서 UserPromptSubmit이다.
 - 상태를 저장하지 않는다. "한 번만 제안" 판단은 모델이 자기 대화 기록을 보고 한다.
-- 애초에 **모든 세션을 plan으로 시작**하고 싶으면 nudge 대신 레포
-  `.claude/settings.json`에 `{"permissions": {"defaultMode": "plan"}}`을 넣으면 된다.
-  그러면 이 훅은 조용히 아무것도 하지 않는다.
+- 예외 하나: 프롬프트가 `/wt:todo` 목록에 대한 번호 답장이면 **claim이 먼저**고, 사소한
+  항목이 아니면 그 직후 모델이 `EnterPlanMode`로 직접 진입한다 — 그 경우엔 "제안"이
+  아니다.
+- **`defaultMode`는 네가 정한다.** `plan`으로 두면 모든 세션이 plan으로 시작하고 이 훅은
+  조용히 아무것도 하지 않는다 — 대신 plan 모드가 모든 쓰기를 막으므로 `/wt:todo`의
+  claim이 걸려 매 선택마다 shift+tab이 필요하다. 반대로 non-plan 디폴트 + 이 훅 +
+  `EnterPlanMode` 조합은 그 마찰이 없지만 사전 승인 게이트를 잃는다. 트레이드오프와
+  어느 파일에 넣을지는 [`commands/todo.md`](commands/todo.md)의 "세션 권한 설정" 참고.
