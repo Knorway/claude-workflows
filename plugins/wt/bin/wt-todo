@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# On PATH while the plugin is enabled, so /wt:todo can call `wt-todo list`
+# without knowing where the plugin is installed.
+exec bash "$(cd "$(dirname "$0")/../scripts" && pwd)/todo.sh" "$@"

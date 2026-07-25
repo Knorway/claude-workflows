@@ -1,0 +1,56 @@
+{
+	"hooks": {
+		"WorktreeCreate": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/wt-create.sh",
+						"timeout": 60,
+						"statusMessage": "worktree 생성 중 (repo 밖)…"
+					}
+				]
+			}
+		],
+		"WorktreeRemove": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/wt-remove.sh",
+						"timeout": 30
+					}
+				]
+			}
+		],
+		"SessionStart": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/sync-main.sh",
+						"timeout": 30,
+						"statusMessage": "base 브랜치 동기화 확인 중…"
+					},
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/wt-provision.sh",
+						"timeout": 180,
+						"statusMessage": "worktree 프로비저닝 중…"
+					}
+				]
+			}
+		],
+		"UserPromptSubmit": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/plan-nudge.sh",
+						"timeout": 10
+					}
+				]
+			}
+		]
+	}
+}

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Create a provisioned worktree WITHOUT starting a Claude session — for when you
+# want one purely for the shell (a second dev server, a long build). The normal
+# path is `claude --worktree`, which goes through the WorktreeCreate hook and
+# provisions itself.
+#
+#   wt-new <name>
+[ $# -gt 0 ] || { echo "usage: wt-new <name>" >&2; exit 2; }
+exec bash "$(cd "$(dirname "$0")/../scripts" && pwd)/wt-create.sh" "$@"

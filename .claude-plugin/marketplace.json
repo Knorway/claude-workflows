@@ -1,0 +1,14 @@
+{
+	"name": "claude-workflows",
+	"owner": {
+		"name": "Knorway"
+	},
+	"description": "Workflow plugins for Claude Code: git worktree parallel work, contention-free TODO claiming, and PR automation.",
+	"plugins": [
+		{
+			"name": "wt",
+			"source": "./plugins/wt",
+			"description": "Parallel work in git worktrees: out-of-repo worktree hooks, CoW provisioning, a contention-free TODO claim command, and a PR command."
+		}
+	]
+}
