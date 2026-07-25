@@ -32,8 +32,14 @@ git fetch -q origin 2>/dev/null
 git diff origin/<base>...HEAD --stat -- ':(exclude)*.lock' ':(exclude)yarn.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)go.sum'
 ```
 
-PR 모드면 대신 `gh pr view <n> --json title,baseRefName,headRefName` 와
+PR 모드면 대신 `gh pr view <n> --json title,state,baseRefName,headRefName` 와
 `gh pr diff <n> --name-only`.
+
+**`state`가 `MERGED`(또는 `CLOSED`)면 읽기 전용으로 강등한다** — 5단계 자동 수정을
+건너뛰고 보고만 한다. 리뷰어는 그 PR 시점의 옛 diff를 보는데 수정은 **지금의 워킹
+트리**에 가해지므로, 이미 후속 커밋이 해결한 문제를 되돌리거나 존재하지 않는 코드를
+고치려 든다. 강등했다는 사실을 보고 첫 줄에 적는다. 사용자가 명시적으로 "머지됐어도
+고쳐라"라고 하면 그때만 수정한다.
 
 **diff 원문을 절대 네 문맥에 올리지 마라.** `--stat`만 본다. 원문은 각 서브에이전트가
 자기 문맥에서 읽는다 — 이게 이 커맨드의 비용을 결정하는 단 하나의 규칙이다.
@@ -91,6 +97,7 @@ finding당 3개를 띄우고 **과반**으로 판정한다(CONFIRMED 2표 이상
 
 ## 5. 수정 — CONFIRMED만
 
+- **머지·닫힌 PR을 리뷰했다면 이 단계 전체를 건너뛴다** (1단계 참조).
 - CONFIRMED만 고친다. PLAUSIBLE·REFUTED는 **손대지 않는다.**
 - **최대 2라운드.** 고친 뒤 그 파일에 대해서만 1번 재검토하고, 그래도 남으면 사람에게
   넘긴다. 무한 루프로 가지 않는다.

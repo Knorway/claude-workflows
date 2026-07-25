@@ -1,7 +1,7 @@
 {
 	"name": "wt",
 	"displayName": "Worktree Workflow",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "Parallel work in git worktrees: out-of-repo worktree hooks, copy-on-write provisioning, a contention-free TODO claim command, a secret-scanning PR command, and a fan-out code review with adversarial verification.",
 	"author": {
 		"name": "Knorway"
