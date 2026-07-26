@@ -1,1 +1,8 @@
 .DS_Store
+
+# wt's task list — a machine-local scratchpad. It holds claim markers
+# (`- [-] … #slug`) and half-formed notes, and `/wt:remote-push` runs `git add -A`,
+# so without these two lines the first pull request carries all of it. todo.sh
+# refuses to create the file until they are here.
+/TODO.md
+/TODO.md.lock
