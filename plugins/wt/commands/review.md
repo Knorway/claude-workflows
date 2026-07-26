@@ -29,7 +29,7 @@ refs/remotes/origin/HEAD` 순으로 정한다(`/wt:remote-push`와 같은 규칙
 ```bash
 git branch --show-current
 git fetch -q origin 2>/dev/null
-git diff origin/<base>...HEAD --stat -- ':(exclude)*.lock' ':(exclude)yarn.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)go.sum'
+git diff origin/<base>...HEAD --stat -- ':(exclude)*.lock' ':(exclude)*.lockb' ':(exclude)*-lock.json' ':(exclude)*-lock.yaml' ':(exclude)npm-shrinkwrap.json' ':(exclude)go.sum'
 ```
 
 PR 모드면 대신 `gh pr view <n> --json title,state,baseRefName,headRefName` 와
@@ -105,8 +105,9 @@ finding당 3개를 띄우고 **과반**으로 판정한다(CONFIRMED 2표 이상
 - CONFIRMED만 고친다. PLAUSIBLE·REFUTED는 **손대지 않는다.**
 - **최대 2라운드.** 고친 뒤 그 파일에 대해서만 1번 재검토하고, 그래도 남으면 사람에게
   넘긴다. 무한 루프로 가지 않는다.
-- 고친 다음 **레포의 검증 절차를 그대로 실행한다** — 이 레포의 `CLAUDE.md`가 정한
-  순서(타입체크·생성기·서버 호출 등)를 따르고, 없으면 뻔한 정적 검사만 돌린다.
+- 고친 다음 **`wt-verify plan`** 으로 검증 사다리를 받아, **수정이 건드린 파일에
+  해당하는 단계만** 직접 실행하고 `wt-verify note <id>=…`로 결과를 남긴다.
+  (`wt-verify`는 명령을 출력만 한다 — 실행은 네가 한다.)
 - 커밋하지 않는다. 커밋·푸시는 `/wt:remote-push`의 일이다.
 
 ## 6. 보고
@@ -127,3 +128,23 @@ finding당 3개를 띄우고 **과반**으로 판정한다(CONFIRMED 2표 이상
 신뢰할 근거가 없다. 마지막 줄에 렌즈 수와 반증 수를 적어 비용을 짐작할 수 있게 한다.
 
 발견이 0건이면 표를 만들지 말고 한 문장으로 끝낸다.
+
+## 7. 리뷰했다는 기록 남기기 (마지막, 필수)
+
+보고를 마친 뒤 원장에 한 줄 남긴다. 이게 `/wt:remote-push`의 리뷰 게이트가 보는 신호이고,
+동시에 PR 본문 `## 확인`에 **이 브랜치가 리뷰됐다는 사실**이 영구히 남는다.
+
+```bash
+wt-verify note review=ok:"3렌즈/반증1 · CONFIRMED 2건 수정, REFUTED 4건"
+```
+
+**사람이 판단해야 할 PLAUSIBLE이 남았으면 `ok`가 아니라 `human`으로 남긴다** — 그러면
+PR에 체크박스로 떠서 머지 전에 눈에 걸린다:
+
+```bash
+wt-verify note review=human:"PLAUSIBLE 2건 — src/map.tsx:88 경합, src/list.tsx:12 널 경로"
+```
+
+`--quick`이면 반증을 안 돌렸다는 사실까지 적는다(`review=ok:"2렌즈/반증없음 · 지적 0건"`).
+머지·닫힌 PR을 읽기 전용으로 리뷰한 경우엔 **남기지 않는다** — 지금 워킹 트리를 검토한
+것이 아니므로 게이트를 통과시켜선 안 된다.

@@ -93,8 +93,40 @@ done <<EOF
 $(wt_cfg_list "$main" '.provision.copy')
 EOF
 
-# Directories a generator refuses to create for itself (relay-compiler's
-# artifactDirectory is the usual one). Their absence is also what tells us the
+# With no `copy` configured we cannot know what this repo's worktrees need — and
+# the failure is silent: a worktree missing its .env builds, runs, and is wrong.
+# So look for the shape of the problem (gitignored config sitting in the primary
+# but absent here) and NAME it. Deliberately report-only: copying a file the repo
+# never asked us to copy would move secrets around on a guess.
+if [ -z "$(wt_cfg_list "$main" '.provision.copy')" ]; then
+	# `glob` magic is required on the EXCLUDE too. Without it `**` is literal and
+	# the exclude matches nothing, so a package shipping a `.env` fixture eats the
+	# list and the one file we meant to name never gets printed.
+	candidates=$(git -C "$main" ls-files --others --ignored --exclude-standard -- \
+		':(glob)**/.env' ':(glob)**/.env.*' ':(glob)**/*.local' \
+		':(exclude,glob)**/node_modules/**' ':(exclude,glob)**/vendor/**' 2>/dev/null || true)
+	# The cap goes AFTER the "is it missing here" filter, never before. Capping the
+	# candidates first meant five files that were already provisioned could fill the
+	# quota and the sixth — the one actually absent — was never looked at, which
+	# silences the exact warning this block exists to print.
+	miss=""; nmiss=0
+	while IFS= read -r rel; do
+		[ -n "$rel" ] || continue
+		[ -e "$wt/$rel" ] && continue
+		nmiss=$((nmiss + 1))
+		[ "$nmiss" -le 5 ] && miss="$miss $rel"
+	done <<EOF
+$candidates
+EOF
+	if [ "$nmiss" -gt 5 ]; then miss="$miss 외 $((nmiss - 5))개"; fi
+	# Braces are load-bearing: in a UTF-8 locale bash reads `$warn메인` as one
+	# identifier and dies with "unbound variable" under `set -u`.
+	[ -n "$miss" ] && warn="${warn}메인에 있는 설정 파일이 이 워크트리엔 없다($miss). 필요하면 .claude/wt.json의 provision.copy에 넣을 것. "
+fi
+
+# Directories a generator refuses to create for itself — a codegen tool's output
+# directory (relay's artifactDirectory, protoc's --*_out, sqlc's gen) that the
+# tool expects to already exist. Their absence is also what tells us the
 # `run` commands below have never been executed in this worktree.
 fresh=0
 while IFS= read -r rel; do

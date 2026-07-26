@@ -20,6 +20,12 @@
 # That trade-off is the repo owner's call, not this plugin's — see commands/todo.md.
 set -euo pipefail
 
+# jq is a hard dependency of this plugin, but this hook fires on EVERY prompt and
+# runs under `set -euo pipefail` — without the guard a missing jq exits 127 and
+# the user eats a hook error on every single turn. A nudge is the most optional
+# thing here: no jq, no nudge, no noise.
+command -v jq >/dev/null 2>&1 || exit 0
+
 input=$(cat)
 mode=$(printf '%s' "$input" | jq -r '.permission_mode // empty')
 
