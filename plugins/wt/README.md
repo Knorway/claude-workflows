@@ -17,7 +17,16 @@
 | `/wt:remote-push` | 커맨드 | 비밀키 스캔 → 커밋 → 푸시 → PR |
 | `/wt:review` | 커맨드 | 문맥 없는 리뷰어 여럿 병렬 → 반증 검증 → CONFIRMED만 수정 |
 | `wt:reviewer`, `wt:refuter` | 서브에이전트 | `/wt:review`가 띄우는 읽기 전용 리뷰어/회의론자 |
+| `wt-verify` | 커맨드가 호출 | 검증 사다리 출력 + 무엇이 돌았는지 점호 |
 | `wt-todo`, `wt-new` | PATH 실행파일 | todo/워크트리의 셸 진입점 |
+
+## 요구사항
+
+- **`jq`** — 하드 의존성이다(`brew install jq`). 훅이 stdin의 JSON 페이로드와
+  `.claude/wt.json`을 읽는 데 쓴다. 없으면 설정을 못 읽어 조용히 절반만 프로비저닝될 수
+  있으므로, 그 경우 스크립트가 경고를 낸다. `plan-nudge`는 jq가 없으면 그냥 침묵한다.
+- `git` 2.x, `bash`. macOS 기준이지만 `flock` 같은 GNU 전용 도구는 쓰지 않는다.
+- `gh` — `/wt:remote-push`의 PR 단계에만 필요하다.
 
 ## 쓰는 법
 
@@ -108,7 +117,30 @@ claude plugin marketplace remove claude-workflows
 claude plugin marketplace add Knorway/claude-workflows
 ```
 
-## 레포에 붙이기
+## 새 프로젝트에 붙일 때 — 체크리스트
+
+가장 마찰이 적은 길은 **사용자 스코프로 한 번 설치**하는 것이다. 그러면 프로젝트마다
+`.claude/settings.json`을 손보지 않아도 모든 레포에서 켜진다.
+
+```bash
+claude plugin marketplace add Knorway/claude-workflows
+claude plugin install wt@claude-workflows --scope user     # ← 한 번만
+```
+
+그다음 새 레포에서:
+
+1. **`.gitignore`에 `/TODO.md`와 `/TODO.md.lock`.** 안 넣으면 `wt-todo`가 **파일을 만들지
+   않고 거부한다** — 넣지 않은 채로 두면 `/wt:remote-push`의 `git add -A`가 머신 로컬
+   스크래치패드를 PR로 내보내기 때문이다.
+2. **`wt-verify plan`을 한 번 돌려본다.** 추정 사다리와 붙여넣을 `verify` 블록을 준다.
+   맞으면 `.claude/wt.json`에 넣고, 아니면 고쳐서 넣는다.
+3. **워크트리를 하나 만들어 본다**(`wt-new tmp`). 프로비저닝이 "메인에 있는 설정 파일이
+   이 워크트리엔 없다"고 알려주면 그 경로를 `provision.copy`에 넣는다.
+4. `provision.run`을 쓴다면 이 머신에서 한 번 허용한다(아래 참고).
+
+레포를 공유하거나 CI에서도 켜지길 원할 때만 아래의 프로젝트 스코프 설정을 쓴다.
+
+## 레포에 붙이기 (프로젝트 스코프)
 
 소비자 레포의 `.claude/settings.json`에 **두 가지**를 쓴다. `enabledPlugins`만 쓰면
 마켓플레이스 이름이 그 머신의 사용자 설정으로만 풀리고, 새로 클론한 사람에게는
@@ -134,15 +166,20 @@ claude plugin marketplace add Knorway/claude-workflows
   "baseBranch": "main",                 // 생략 시 main → master → origin/HEAD
   "provision": {
     "clone": ["node_modules"],          // CoW 복제할 디렉터리(레포 상대경로)
-    "copy":  ["apps/mobile/.env.local"],// 그대로 복사할 gitignore 파일
-    "mkdir": ["src/__generated__"],     // 생성기가 스스로 못 만드는 디렉터리
-    "run":   ["yarn relay"]             // 최초 프로비저닝 때 한 번 실행
-  }
+    "copy":  [".env.local"],            // 그대로 복사할 gitignore 파일
+    "mkdir": ["src/generated"],         // 생성기가 스스로 못 만드는 디렉터리
+    "run":   ["make codegen"]           // 최초 프로비저닝 때 한 번 실행
+  },
+  "verify": [ /* 아래 "검증 사다리" 절 */ ]
 }
 ```
 
-설정 파일이 **없으면** `node_modules`가 있을 때만 복제하고 끝난다. 설정 0으로도
-동작한다.
+**이 파일은 플러그인이 배포하지도 생성하지도 않는다.** 새 레포에 설치해도 아무 파일이
+안 생기고, 없으면 모든 조회가 기본값으로 떨어진다 — `node_modules`가 있을 때만 복제하고
+끝이다. **설정 0으로 동작한다.**
+
+값은 전부 그 레포의 것이다. 위 예시가 JS로 보이는 건 예시라서지 플러그인이 JS를 알기
+때문이 아니다. Rust 레포라면 `clone: ["target"]`, `run: ["cargo build"]`가 된다.
 
 ### `run`은 머신 주인이 레포마다 한 번 허용해야 한다
 
@@ -164,6 +201,58 @@ echo /path/to/repo >> ~/.claude/wt-run-allow      # 빈 줄과 # 주석 무시
 > 플러그인의 `pluginConfigs`/`user_config`를 쓰지 않는 이유: Claude Code는 프로젝트
 > `.claude/settings.json`의 `pluginConfigs`를 **무시한다**(클론한 레포가 훅 커맨드에
 > 값을 주입할 수 있어서). 그래서 레포별 설정은 스크립트가 직접 읽는 레포 안 파일이다.
+
+## 검증 사다리 — `verify` 와 사람 게이트
+
+무엇을 돌려야 변경이 "끝난" 것인지를 기계가 읽을 수 있게 적는다. 싼 것부터 순서대로.
+
+```jsonc
+"verify": [
+  { "id": "typecheck", "run": "yarn typecheck" },
+  { "id": "codegen",   "run": "yarn relay", "when": "스키마가 바뀌었을 때" },
+  { "id": "e2e",       "human": true,  "when": "UI가 바뀌었을 때", "note": "CLAUDE.md '검증' 절" },
+  { "id": "release",   "worktree": false, "note": "절대경로를 굽는 툴체인 — 메인에서만" }
+]
+```
+
+| 필드 | 기본 | 의미 |
+| --- | --- | --- |
+| `id` | (필수) | 점호에 쓰이는 안정된 키 |
+| `run` | — | **원문 그대로 출력되는** 명령. 여러 단계면 생략하고 `note`로 문서를 가리킨다 |
+| `when` | — | 언제 돌리는지. 산문 — 모델이 판단한다 |
+| `worktree` | `true` | `false` = 워크트리에서 물리적으로 불가 |
+| `human` | `false` | 기계가 판정 못 함 → 사람 게이트 |
+| `note` | — | 한 줄 주의, 또는 문서 포인터 |
+
+```bash
+wt-verify plan                          # 사다리를 출력한다 (실행은 하지 않는다)
+wt-verify note typecheck=ok api=skip:서버미기동
+wt-verify note e2e=human:"시트가 60% 높이로 올라오는지"
+wt-verify checks                        # PR 본문 `## 확인`에 들어갈 점호
+```
+
+- **`wt-verify`는 명령을 출력만 한다. 절대 실행하지 않는다.** 실행은 모델이 평범한
+  Bash로 한다. `wt-verify run <id>` 같은 건 없다 — 불투명한 id 뒤에서 레포 문자열이
+  도는 건 프롬프트 세탁이다.
+- **다만 그것만으로 안전해지지 않는다.** `wt.json`은 커밋되는 파일이고, allow 규칙이
+  넓으면(`Bash(curl *)` 등) permission 프롬프트가 아예 안 뜬다. 그래서 사다리는
+  **primary 체크아웃의 계약을 먼저** 쓰고(다른 데서 왔으면 `plan`이 알린다), 검증 단계가
+  할 일이 아닌 모양은 `⚠ 위험 패턴`으로 **표시**한다 — 셸로 파이프, 비-로컬 네트워크,
+  셸 치환, 홈·비밀 경로, 파괴적 명령, 인코딩 해독. 로컬 `curl` 같은 정상 계약엔 침묵한다.
+  **이상한 계약을 알아채는 장치이지 안전장치가 아니다.**
+- **`checks`는 계약의 모든 id를 찍고, 기록 없는 건 `미실행`으로 채운다.** 빠뜨린 검증이
+  침묵이 아니라 줄로 보이는 게 요점이다. `worktree: false` 단계는 워크트리에서 자동으로
+  `건너뜀(메인 체크아웃 전용)`이 된다.
+- **`human` 단계는 PR 본문에 진짜 체크박스(`- [ ]`)로 나온다.** 푸시를 막지는 않는다 —
+  막으면 안 쓰게 되므로, 보고가 전부다.
+- **`verify`가 없어도 된다.** 없으면 `package.json` scripts·`Cargo.toml`·`go.mod`·
+  `pyproject.toml`·`Makefile`을 보고 **추정**해서 출력하고, 그대로 굳힐 수 있게
+  **붙여넣을 `verify` 블록까지 찍어준다.** 추정할 것도 없으면 직접 찾아 돌리고 못 돌린 건
+  이름을 대라고 안내한다.
+
+`wt.json`의 `verify`는 **색인**이고 `CLAUDE.md`는 **매뉴얼**이다. 왜 그 포트여야 하는지,
+어떤 식으로 실패하는지 같은 산문은 `CLAUDE.md`에 두고 `note`로 가리킨다 — 두 군데 적으면
+갈라진다. 자세한 근거는 [`docs/wt-design.md`](../../docs/wt-design.md).
 
 ## 워크트리는 repo 밖에 둔다
 
@@ -217,9 +306,18 @@ APFS `cp -c`는 copy-on-write라 수 GB짜리 `node_modules`를 복제해도 실
 
 ## `/wt:todo` — 경합 없는 점유
 
-`TODO.md` **한 파일**이 목록이자 점유 기록이다. 빈 항목은 `- []`, 어느 탭이 잡은
-항목은 `- [-] 본문  #<slug>`, 끝난 항목은 `- [x]`. 별도 원장이 없으니 어긋날 것이
-없고, 사람이 `[-]`를 `[x]`로 바꾸면 점유도 함께 끝난다.
+`TODO.md` **한 파일**이 목록이자 점유 기록이다.
+
+```
+- [] 본문                 자유, 선택 가능
+- [-] 본문  #<slug>       점유, 그 탭이 작업 중
+- [~] 본문  #<slug>       PR 올라감, 머지 대기      ← /wt:remote-push 가 찍는다
+- [x] 본문                완료 (점유도 함께 끝남)
+```
+
+별도 점유 원장이 없으니 어긋날 것이 없고, 사람이 `[-]`나 `[~]`를 `[x]`로 바꾸면 점유도
+함께 끝난다. PR이 닫히거나 갈아엎였으면 `wt-todo release`가 `[]`로 되돌린다.
+(`wt-verify`의 원장은 별개 파일이다 — `.git/worktrees/<name>/wt/verify-<branch>.tsv`.)
 
 - 파일은 **primary 체크아웃에만** 있고, 모든 워크트리가 `--git-common-dir`로 그 한
   파일을 찾아간다. 워크트리마다 자기 사본을 만들지 않는 게 핵심이다.
@@ -227,9 +325,14 @@ APFS `cp -c`는 copy-on-write라 수 GB짜리 `node_modules`를 복제해도 실
   rename하므로 두 탭이 같은 줄에서 동시에 이길 수 없다.
 - 슬러그는 체크아웃 디렉터리 이름이다 — 브랜치 이름 규약을 아무도 알 필요가 없다.
 - **`TODO.md`와 `TODO.md.lock`은 `.gitignore`에 넣어야 한다.** 머신 로컬
-  스크래치패드라야 브랜치 전환이 내용을 흔들지 않는다.
+  스크래치패드라야 브랜치 전환이 내용을 흔들지 않는다. 안 넣으면 `wt-todo`가 **파일을
+  만들지 않고 거부한다** — 점유 마커와 메모가 `/wt:remote-push`의 `git add -A`를 타고
+  PR로 나가는 걸 막는 게 부탁이 아니라 가드여야 하기 때문이다.
 
-셸에서 직접: `wt-todo list | add "<메모>" | claim <줄번호…> | release | mine`.
+셸에서 직접: `wt-todo list | add "<메모>" | claim <줄번호…> | pr | release | mine`.
+
+**새 상태를 만들려면 `list`/`claim`/`pr`/`release`/`mine`을 한꺼번에 가르쳐야 한다.**
+`list`가 모르는 마커는 항목의 상태를 바꾸는 게 아니라 목록에서 **사라지게** 만든다.
 
 ## `/wt:review` — 편향 없는 리뷰
 
@@ -252,6 +355,10 @@ APFS `cp -c`는 copy-on-write라 수 GB짜리 `node_modules`를 복제해도 실
 - PLAUSIBLE은 사람이 고르고, REFUTED도 화면에 남긴다 — 무엇이 걸러졌는지 보여야
   걸러낸다는 사실을 신뢰할 수 있다.
 - 커밋하지 않는다. 커밋·푸시는 `/wt:remote-push`의 일이다.
+- 끝나면 원장에 `review=…`를 남긴다. 그래서 **`/wt:remote-push`가 리뷰 안 한 브랜치를
+  잡아낸다** — 기록이 없으면 푸시 전에 `--quick`을 강제로 한 번 돌리고, 지적이 나오면
+  보고한 뒤 계속할지 묻는다. 급할 땐 `/wt:remote-push --no-review`. PLAUSIBLE이 남았으면
+  `review=human:…`으로 남겨 PR에 체크박스로 띄운다.
 
 왜 이 모양인지(독립성 등급, 비용 모델, 완전 자동 루프의 함정, CI로 올리는 법)는
 [`docs/review-loop.md`](../../docs/review-loop.md).

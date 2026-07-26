@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# On PATH while the plugin is enabled, so the commands can call `wt-verify plan`
+# without knowing where the plugin is installed.
+exec bash "$(cd "$(dirname "$0")/../scripts" && pwd)/verify.sh" "$@"
