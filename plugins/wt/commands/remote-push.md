@@ -34,7 +34,7 @@ This runs often. Keep it cheap:
 ## 0. Review gate — before anything else
 
 Unreviewed work should not become a pull request by accident. If this branch has
-not been reviewed yet, run **`/wt:review --quick`** first, then come back here.
+not been reviewed yet, run **`/wt:review`** first, then come back here.
 
 ```bash
 wt-verify checks 2>/dev/null | grep -E '^- review — ok|사람 확인 필요.*· review —' | grep -v 미실행
@@ -56,7 +56,7 @@ the strength of the words alone. Without the filter, adding that one line to
 The ledger is per-branch, so this only ever reflects work on *this* branch. Treat
 the branch as **reviewed** only if that line is there *or* you can see a
 `/wt:review` run for the current state in this conversation. **When in doubt,
-review** — a redundant `--quick` costs a few dollars; an unreviewed PR costs more.
+review** — a redundant run costs a few dollars; an unreviewed PR costs more.
 
 Skip the gate entirely when:
 
@@ -65,13 +65,19 @@ Skip the gate entirely when:
 - the review would have nothing to read (`git diff origin/<base>...HEAD --stat` and
   the working tree are both empty).
 
-After the review returns:
+After the review returns it has already fixed what it could and written its own
+ledger line, so the gate above is now satisfied. What is left is the part it
+*could not* settle:
 
-- **0 findings** → say so in one line and continue to step 1.
-- **findings** → show the report and **ask whether to push anyway.** Do not push
-  in the same turn. `--quick` never edits files, so nothing was fixed for you;
-  this is the moment the user decides. If they want the findings fixed, run
-  `/wt:review` (no `--quick`) instead of pushing.
+- **0 findings, nothing left** → say so in one line and continue to step 1.
+- **PLAUSIBLE or unfixed CONFIRMED left** (the review recorded `review=human`) →
+  show those rows and **ask whether to push anyway.** Do not push in the same
+  turn. The gate does not block them — `human` means someone looked — so this ask
+  is the only place a person sees them before the PR exists.
+
+The review edits the working tree, so its fixes are picked up by step 1's
+`git add -A` and ride along in this commit. That is intended: the fix and the
+code it fixes belong in the same change.
 
 The gate is about *having looked*, not about being clean — it never silently
 blocks, and `--no-review` is always there for a one-line typo fix.
