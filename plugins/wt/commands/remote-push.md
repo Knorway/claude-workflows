@@ -70,10 +70,13 @@ ledger line, so the gate above is now satisfied. What is left is the part it
 *could not* settle:
 
 - **0 findings, nothing left** → say so in one line and continue to step 1.
-- **PLAUSIBLE or unfixed CONFIRMED left** (the review recorded `review=human`) →
-  show those rows and **ask whether to push anyway.** Do not push in the same
-  turn. The gate does not block them — `human` means someone looked — so this ask
-  is the only place a person sees them before the PR exists.
+- **PLAUSIBLE left, unfixed CONFIRMED left, or a test-ratchet violation** (the
+  review recorded `review=human`) → show those rows and **ask whether to push
+  anyway.** Do not push in the same turn. The gate does not block them — `human`
+  means someone looked — so this ask is the only place a person sees them before
+  the PR exists. Read the ratchet case out loud when it fires: it means the diff
+  deletes test assertions or widens the runner's scope, so the green suite this
+  push is about to rely on covers less than it did before.
 
 The review edits the working tree, so its fixes are picked up by step 1's
 `git add -A` and ride along in this commit. That is intended: the fix and the
