@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# On PATH while the plugin is enabled, so /wt:review can call
+# `wt-review-fanout --repo …` without knowing where the plugin is installed.
+exec bash "$(cd "$(dirname "$0")/../scripts" && pwd)/review-fanout.sh" "$@"
