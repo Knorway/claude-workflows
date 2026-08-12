@@ -4,7 +4,7 @@
 #
 #   review-fanout.sh --repo <root> --out <file> [--base-at <sha> | --pr <n>]
 #                    [--lenses 1,2,3,4] [--test-writer] [--untracked "<paths>"]
-#                    [--scope "<paths>"] [--budget <usd>]
+#                    [--scope "<paths>"]
 #
 # WHY THIS IS A SEPARATE PROCESS AND NOT SUBAGENTS IN THE CALLING SESSION.
 # Measured across four real reviews (~/.claude/projects/*.jsonl `usage`): the
@@ -28,8 +28,10 @@
 #
 # WHAT THIS BUYS THAT SUBAGENTS COULD NOT. `total_cost_usd` includes the nested
 # subagents (measured: $0.194 total for a run whose orchestrator part was ~$0.10),
-# so a review's price is observable for the first time, and `--max-budget-usd`
-# caps it. Neither is possible for in-session subagents.
+# so a review's price is observable for the first time — not possible for
+# in-session subagents. It is MEASURED, never capped: a cap does not make a review
+# cheaper, it makes it stop early, and a review that stopped early is an incomplete
+# review wearing a clean one's clothes.
 #
 # THE ONE RULE: this process REPORTS. It never fixes. Fixing stays in the calling
 # session where the implementation context lives, and where the ratchet check in
@@ -40,7 +42,7 @@ set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/wt-common.sh"
 
 REPO='' OUT='' BASE_AT='' PR='' LENSES='1,2,3' TEST_WRITER=0
-UNTRACKED='' BUDGET=''
+UNTRACKED=''
 SCOPE_ARGV=()
 
 # `need` exists because a trailing flag with no value used to make `shift 2` fail
@@ -56,7 +58,6 @@ while [ $# -gt 0 ]; do
 		--pr)          need "$1" $#; PR=$2; shift 2 ;;
 		--lenses)      need "$1" $#; LENSES=$2; shift 2 ;;
 		--untracked)   need "$1" $#; UNTRACKED=$2; shift 2 ;;
-		--budget)      need "$1" $#; BUDGET=$2; shift 2 ;;
 		# Repeatable, one path per flag. A single space-separated string went
 		# through `read -ra`, so `--scope "My Notes.md"` became two pathspecs that
 		# match nothing: git exits 0 with an empty diff and the re-review passes
@@ -138,10 +139,6 @@ fi
 DIFF_CMD=''
 for arg in "${DIFF_ARGV[@]}"; do DIFF_CMD="$DIFF_CMD${DIFF_CMD:+ }$(shq "$arg")"; done
 
-# Budget from diff size, because that is what the reviewers actually read. The
-# floor exists so a two-line diff still affords a fan-out; the ceiling is the
-# backstop the calling session never had.
-#
 # An empty diff is a HARD STOP, not a warning. The subagents get this exact
 # command; if it yields nothing they each review nothing and truthfully report
 # nothing, and the caller receives exit 0 with an empty findings array — byte for
@@ -149,9 +146,6 @@ for arg in "${DIFF_ARGV[@]}"; do DIFF_CMD="$DIFF_CMD${DIFF_CMD:+ }$(shq "$arg")"
 # far (an unquoted `(`, a scope path with a space, a wrong PR number) arrived
 # through this one door, and wt-design.md §2 invariant 3 is explicit that an
 # unrun check is reported by name rather than by silence.
-#
-# The count runs unconditionally for that reason — `--budget` skips the sizing,
-# never the check.
 #
 # A BROKEN diff command and an EMPTY one are told apart, and that distinction is
 # the whole point of keeping stderr. `2>/dev/null` collapsed them: a bad --base-at,
@@ -194,21 +188,12 @@ if [ -z "$diff_out" ]; then
 	if [ -n "$UNTRACKED" ]; then
 		echo "  diff 는 비었지만 untracked 경로가 있다 — 서브에이전트가 그 파일들을 직접 읽는다:" >&2
 		echo "    $UNTRACKED" >&2
-		lines=0
 	else
 		echo "review-fanout.sh: diff 가 비었다 — 서브에이전트도 같은 명령을 받으므로 리뷰가 성립하지 않는다:" >&2
 		echo "    $DIFF_CMD" >&2
 		echo "  (변경이 정말 없으면 이 스크립트를 부르기 전에 끝내야 한다. 새 파일만 고쳤다면 --untracked 로 넘겨라.)" >&2
 		exit 2
 	fi
-else
-	lines=$(printf '%s\n' "$diff_out" | wc -l | tr -d ' ')
-fi
-
-if [ -z "$BUDGET" ]; then
-	BUDGET=$(( lines / 200 ))
-	[ "$BUDGET" -lt 5 ] && BUDGET=5
-	[ "$BUDGET" -gt 25 ] && BUDGET=25
 fi
 
 # `Write` is not optional: the durability contract below asks the inner process to
@@ -341,7 +326,7 @@ $TW_BLOCK
 ## 4. 출력 — 두 번 한다
 
 먼저 아래 JSON 을 **파일 \`$OUT\` 에 Write 로 쓴다.** 그다음 같은 JSON 을 네 최종
-응답으로 낸다. 파일을 먼저 쓰는 이유는 네가 예산 상한에 걸리거나 중간에 죽어도 호출자가
+응답으로 낸다. 파일을 먼저 쓰는 이유는 네가 중간에 죽어도 호출자가
 거기서 회수할 수 있게 하려는 것이다. 설명 문장 없이 JSON 객체 하나만:
 
 \`\`\`json
@@ -365,7 +350,7 @@ $TW_BLOCK
 이 결과를 신뢰할 근거가 없다."
 
 # --- run --------------------------------------------------------------------
-echo "  리뷰 fan-out 을 별도 프로세스에서 돌린다 (렌즈 $LENSES$([ "$TEST_WRITER" = 1 ] && echo ' + 테스트작성'), 상한 \$$BUDGET)…" >&2
+echo "  리뷰 fan-out 을 별도 프로세스에서 돌린다 (렌즈 $LENSES$([ "$TEST_WRITER" = 1 ] && echo ' + 테스트작성'))…" >&2
 
 RAW=$(mktemp)
 ERR=$(mktemp)
@@ -390,7 +375,6 @@ set +e
 claude -p "$PROMPT" \
 	--output-format json \
 	--allowedTools "$TOOLS" \
-	--max-budget-usd "$BUDGET" \
 	>"$RAW" 2>"$ERR"
 rc=$?
 set -e
@@ -426,7 +410,7 @@ if [ -n "$TOUCHED" ]; then
 fi
 
 # The `--out` file is authoritative when it exists: the inner process was told to
-# write it BEFORE answering, so it survives a budget stop or a crash that leaves
+# write it BEFORE answering, so it survives a crash that leaves
 # no parseable result. Falling back to it is the whole reason for the two-step
 # output contract above.
 #
@@ -542,7 +526,7 @@ if payload is None:
 
 note = None
 if env.get("is_error") or rc != 0:
-    note = "fan-out 프로세스가 오류·예산상한으로 끝났다 — 커버리지가 불완전할 수 있다"
+    note = "fan-out 프로세스가 오류로 끝났다 — 커버리지가 불완전할 수 있다"
 emit(payload, cost, note, 0)
 PY
 
