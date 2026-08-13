@@ -1,5 +1,5 @@
 ---
-description: Scan for secrets, commit, push, and open a PR with a Korean body
+description: Scan for secrets, commit, push, and open a PR with a Korean title and body
 argument-hint: "[base | hint] [--no-review]"
 ---
 
@@ -208,8 +208,12 @@ diff-derived body instead: `## 변경 내용` (3~6 bullets of what/why, from the
 step-3 diff) + `## 확인`. For branch-wide context use
 `git log origin/<base>..HEAD --format='%s' && git diff origin/<base>...HEAD --stat`.
 
-Title stays English (reuse the commit subject for a one-commit branch; else write
-one covering the whole branch). Assemble by **piping files, never re-emitting them**:
+The title is Korean, shaped `<type>: <한국어 요약>` — the `type` is the same vocabulary
+as the branch in step 2 (`feat`, `fix`, `docs`, `chore`) and stays English, so a repo
+that squash-merges keeps its history convention. Write the summary fresh, covering
+what the **whole branch** did; do not carry the commit subject over, even on a
+one-commit branch — commits stay English (step 3), only the PR surface is Korean.
+One short line. Assemble by **piping files, never re-emitting them**:
 
 ```bash
 PLAN="${plan_path:-$(ls -t ~/.claude/plans/*.md 2>/dev/null | head -1)}"
@@ -220,7 +224,7 @@ PLAN="${plan_path:-$(ls -t ~/.claude/plans/*.md 2>/dev/null | head -1)}"
 RESULT
 	CHECKS=$(wt-verify checks 2>/dev/null || true)
 	if [ -n "$CHECKS" ]; then printf '\n## 확인\n\n%s\n' "$CHECKS"; fi
-} | gh pr create --base <base> --title '<english subject>' --body-file -
+} | gh pr create --base <base> --title '<type>: <한국어 요약>' --body-file -
 ```
 
 The `cat "$PLAN"` carries the whole plan into the PR at ~zero token cost, and
