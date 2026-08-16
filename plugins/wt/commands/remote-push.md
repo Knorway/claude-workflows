@@ -65,18 +65,30 @@ Skip the gate entirely when:
 - the review would have nothing to read (`git diff origin/<base>...HEAD --stat` and
   the working tree are both empty).
 
-After the review returns it has already fixed what it could and written its own
-ledger line, so the gate above is now satisfied. What is left is the part it
-*could not* settle:
+After the review returns it has already triaged every finding, fixed what was safe
+to fix, and written its own ledger line — so the gate above is now satisfied. The
+status it recorded says whether anything is left for a person:
 
 - **0 findings, nothing left** → say so in one line and continue to step 1.
-- **PLAUSIBLE left, unfixed CONFIRMED left, or a test-ratchet violation** (the
-  review recorded `review=human`) → show those rows and **ask whether to push
-  anyway.** Do not push in the same turn. The gate does not block them — `human`
-  means someone looked — so this ask is the only place a person sees them before
-  the PR exists. Read the ratchet case out loud when it fires: it means the diff
-  deletes test assertions or widens the runner's scope, so the green suite this
-  push is about to rely on covers less than it did before.
+- **`review=ok`** → the review settled everything itself. It fixed the confirmed
+  defects and the plausible ones whose fix was a no-op if the finding was wrong,
+  and what it left unfixed it left **deliberately**. Report its one-line summary
+  and **continue to step 1 without asking.** Unfixed PLAUSIBLE is not a reason to
+  stop — it was judged, and the rows are already in the report above.
+- **`review=human`** → something only a person can settle: a change that needs
+  eyes, an irreversible or credential-touching path, a broken public contract, an
+  oscillating finding, a fix it applied but could not justify in one sentence, an
+  unfixed CONFIRMED that hit the fix-generation cap, or a test-ratchet violation. Show those rows and **ask whether to push anyway.** Do
+  not push in the same turn. The gate does not block them — `human` means someone
+  looked — so this ask is the only place a person sees them before the PR exists.
+  Read the ratchet case out loud when it fires: it means the diff deletes test
+  assertions or widens the runner's scope, so the green suite this push is about
+  to rely on covers less than it did before.
+
+**Do not re-ask about anything `ok` covers.** Asking on every plausible finding is
+what this triage replaced; putting the ask back here restores it wholesale, since
+a refuter that cannot reproduce a finding is *required* to return PLAUSIBLE, which
+makes it the common case rather than the exception.
 
 The review edits the working tree, so its fixes are picked up by step 1's
 `git add -A` and ride along in this commit. That is intended: the fix and the
