@@ -41,6 +41,18 @@
 				]
 			}
 		],
+		"PostToolUse": [
+			{
+				"matcher": "Write|Edit|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/claude-md-budget.sh",
+						"timeout": 10
+					}
+				]
+			}
+		],
 		"UserPromptSubmit": [
 			{
 				"hooks": [

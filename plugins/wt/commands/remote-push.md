@@ -97,6 +97,54 @@ code it fixes belong in the same change.
 The gate is about *having looked*, not about being clean — it never silently
 blocks, and `--no-review` is always there for a one-line typo fix.
 
+## 0.5. Convention-doc budget — trim before staging
+
+`CLAUDE.md`, `AGENTS.md` and `DESIGN.md` are capped at **200 lines each**, and they
+do not carry anything you could learn by reading the code. That cap is not style:
+those three files are the entire evidence base of `/wt:review`'s convention lens,
+so prose that accumulates there degrades every later review. The `PostToolUse`
+hook (`scripts/claude-md-budget.sh`) flags it while you write; this step is the
+one that actually settles it before the change leaves the machine.
+
+```bash
+git diff --name-only origin/<base>...HEAD; git status --porcelain -uall
+```
+
+From those, take the files whose basename is one of the three — **only the ones
+this push touches.** Run `wc -l` on each. Over 200:
+
+**Trim it now. Do not ask.** Deciding what survives is the work, and the rule is
+two questions per line:
+
+1. Would someone be lost without it?
+2. Can they learn it by reading the code?
+
+If 2 is true it does not belong there — delete it. A single file's rationale,
+traps and measurements belong in **code comments**; long regeneration procedures
+belong in **`docs/`**. What stays in a convention doc is what you cannot see by
+opening the files: workspace boundaries, a map of which file to read, invariants
+that span several files, facts from outside the repo.
+
+Four guards, because this edits a file `/wt:review` refuses to touch on its own:
+
+- **Delete and compress only — never add a new factual claim.** The review's ban
+  exists to stop a wrong sentence from landing and becoming next round's
+  evidence. Removal runs the other way; asserting does not, so it stays banned
+  here too.
+- **Quote every deleted line verbatim in your terminal report.** Not a summary —
+  the lines. This is the mirror of the review's 「이 수정이 새로 주장한 것」: an
+  edit nothing verifies has to be readable by the person who owns the file.
+- **Never delete a fact from outside the repo, a measured number, a workspace
+  boundary, or a cross-file invariant** to hit the number. If only those are
+  left, stop there and report the remaining line count and why — 200 is a budget,
+  not a mandate to discard knowledge.
+- **Do not touch an over-budget file this push did not already modify.** Say it
+  in one line and move on; unrelated cleanup does not belong in this diff.
+
+This runs before step 1's `git add -A` so the trim rides in the same commit, and
+it runs regardless of `--no-review` — the review gate is about defects, this is
+about the docs this push is itself adding to.
+
 ## 1. Gather and scan — one call
 
 ```bash
