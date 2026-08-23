@@ -30,7 +30,15 @@ conflict**.
 
 **Repeat the conflicted list as the last line of your report.** Those pull
 requests are not on staging, so nobody is QA-ing them, and the output scrolls.
-The fix is to merge the base branch into that branch and run this again; say so.
+Each one comes with the merge that would let it back in — carry that through
+verbatim rather than restating it.
+
+**Do not assume the base branch is what a casualty hit.** Folds go in ascending
+pull request number, so a branch that merges the base perfectly cleanly still
+drops out when it disagrees with a pull request folded ahead of it — and the
+script says which one. Telling somebody to merge the base in that case sends
+them into a loop: the merge succeeds, nothing is fixed, and the next rebuild
+fails on the same files.
 
 If the script stops on missing config or a `gh` login, relay the message. `gh
 auth login` is interactive, so you cannot run it — tell the user to type

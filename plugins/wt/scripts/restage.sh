@@ -75,8 +75,94 @@ staging_urls() {
 	printf '%s\n' "$u" | sed 's/^/  /'
 }
 
+# What a dropped-out pull request actually collides with. Prints one of:
+#   base                 — it conflicts with <base> itself
+#   pr\t<num>\t<branch>  — one line per pull request folded earlier this round
+#                          that it conflicts with on its own
+#   (nothing)            — clean against <base> and against each earlier fold
+#                          separately; only their combination breaks it
+#   unknown              — git cannot answer (see the version note below)
+#
+# Worth the code because the obvious answer is usually wrong. Folds go in
+# ascending pull request number, so by the time a branch is tried the tree is
+# already <base> plus everything ahead of it, and a conflict here is not
+# evidence about <base> at all. The case that prompted this: #49 merged <base>
+# perfectly cleanly and still dropped out, because what it disagreed with was
+# #48, folded two steps earlier.
+#
+# Naming <base> anyway is worse than saying nothing. `git merge origin/<base>`
+# in that branch *succeeds* — it is usually behind <base> for unrelated reasons
+# — so it reads as progress, and the next rebuild fails on the identical files.
+# The loop has no exit unless somebody thinks to distrust the message.
+#
+# Probes are `merge-tree --write-tree`: no worktree, no checkout, no index. The
+# trees and probe commits it writes are unreferenced objects that the next `git
+# gc` collects. Only a conflicting pull request ever gets here, so a clean round
+# pays nothing at all.
+conflict_probe() {
+	local br=$1 folded=$2 rc=0 num cand tree probe
+
+	# `--write-tree` arrived in git 2.38. Older git exits >1 here (unknown
+	# option) rather than 1 (conflicts), which is what separates the two.
+	git -C "$main" merge-tree --write-tree "origin/$base" "origin/$br" >/dev/null 2>&1 || rc=$?
+	case $rc in
+		0) ;;
+		1) echo base; return 0 ;;
+		*) echo unknown; return 0 ;;
+	esac
+
+	while IFS=$'\t' read -r num cand; do
+		[ -n "$cand" ] || continue
+		# <base> + that one pull request, then this branch on top. A candidate
+		# that folded cleanly cannot conflict with <base>, so a failure to build
+		# the pair is a real error and the candidate is simply skipped.
+		tree=$(git -C "$main" merge-tree --write-tree "origin/$base" "origin/$cand" 2>/dev/null) || continue
+		probe=$(git -C "$main" commit-tree "$tree" -p "origin/$base" -m probe 2>/dev/null) || continue
+		git -C "$main" merge-tree --write-tree "$probe" "origin/$br" >/dev/null 2>&1 ||
+			printf 'pr\t%s\t%s\n' "$num" "$cand"
+	done <<-EOF
+		$folded
+	EOF
+}
+
+# The stderr block for one dropped-out pull request: what it hit, and the merge
+# that would let it back in.
+conflict_report() {
+	local num=$1 br=$2 probe=$3 hits
+
+	# Every sentence keeps its Korean particle off the ref name: branch names are
+	# arbitrary and 은/는, 이/가, 와/과 all depend on the last syllable, so a ref
+	# spliced mid-sentence comes out wrong about half the time.
+	echo "  #$num $br"
+	case "$probe" in
+		base)
+			echo "      충돌 상대는 base(origin/$base)입니다."
+			echo "        git merge origin/$base"
+			echo "      그 브랜치에서 위를 머지하고 다시 돌리세요."
+			;;
+		unknown)
+			echo "      충돌 상대를 특정하지 못했습니다 (git 2.38 미만 — merge-tree --write-tree 없음)."
+			echo "      base와 먼저 접힌 PR을 차례로 의심하세요."
+			;;
+		'')
+			echo "      base와도, 먼저 접힌 PR 어느 하나와도 개별로는 충돌하지 않습니다."
+			echo "      그것들이 함께 있을 때만 깨집니다 — 합본(origin/$staging)을 보고 직접 푸세요."
+			;;
+		*)
+			hits=$(printf '%s\n' "$probe" | awk -F'\t' '{printf "#%s %s, ", $2, $3}')
+			echo "      충돌 상대는 base가 아니라 먼저 접힌 PR입니다 — ${hits%, }"
+			printf '%s\n' "$probe" | awk -F'\t' '{print "        git merge origin/" $3}'
+			echo "      그 브랜치에서 위를 머지하고 다시 돌리세요."
+			# The dependency this creates unwinds on its own, which is what makes
+			# the advice safe to follow — and worth saying out loud, because being
+			# told to merge another open pull request looks like the wrong thing.
+			echo "      상대 PR이 base에 머지되면 그 머지 커밋은 저절로 접힙니다."
+			;;
+	esac
+}
+
 rebuild() {
-	local wt merged conflicted num br
+	local wt merged conflicted folded num br probe
 
 	git -C "$main" fetch --prune --quiet origin
 
@@ -91,6 +177,9 @@ rebuild() {
 
 	merged=""
 	conflicted=""
+	# What has gone in ahead of the branch being tried, in fold order. Only
+	# `conflict_probe` reads it, to work out which of them a casualty hit.
+	folded=""
 
 	while IFS=$'\t' read -r num br; do
 		[ -n "$br" ] || continue
@@ -107,13 +196,18 @@ rebuild() {
 		# is nothing of it that is not already shipped.
 		if git -C "$wt" merge --no-ff -m "restage: #$num $br" "origin/$br" >/dev/null 2>&1; then
 			merged="$merged  #$num $br"$'\n'
+			folded="$folded$num	$br"$'\n'
 		else
 			# A conflicting branch drops out of this round and gets named, the way
 			# a merge queue kicks a pull request out of the queue. Stopping here
 			# would let one pull request block everyone else's QA, and resolving
 			# the conflict here would produce a merge nobody reviewed.
+			#
+			# Named *with what it hit*: the branch is gone from staging until
+			# somebody acts, and the one thing they need is which merge to run.
 			git -C "$wt" merge --abort >/dev/null 2>&1 || true
-			conflicted="$conflicted  #$num $br"$'\n'
+			probe=$(conflict_probe "$br" "$folded")
+			conflicted="$conflicted$(conflict_report "$num" "$br" "$probe")"$'\n'
 		fi
 	done < <(open_prs)
 
@@ -126,7 +220,7 @@ rebuild() {
 	printf '%s' "$merged"
 	if [ -n "$conflicted" ]; then
 		echo
-		echo "충돌로 빠진 PR — 그 브랜치에서 'git merge origin/$base' 뒤 다시 돌리세요:" >&2
+		echo "충돌로 빠진 PR — 합본($staging)에 없으니 아무도 QA하지 않습니다:" >&2
 		printf '%s' "$conflicted" >&2
 	fi
 	staging_urls
