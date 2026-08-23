@@ -16,9 +16,10 @@
 | `/wt:todo` | 커맨드 | 메인의 `TODO.md` 한 파일에서 경합 없이 항목을 점유 |
 | `/wt:remote-push` | 커맨드 | 비밀키 스캔 → 커밋 → 푸시 → PR |
 | `/wt:review` | 커맨드 | 문맥 없는 리뷰어 여럿 병렬 → 반증 검증 → 살아남은 것만 수정 |
+| `/wt:restage` | 커맨드 | staging을 **열린 PR 전부의 합본**으로 다시 만들고, `--merge`로 그 합본이 담은 PR을 내보낸다 |
 | `wt:reviewer`, `wt:refuter` | 서브에이전트 | `/wt:review`가 띄우는 읽기 전용 리뷰어/회의론자 |
 | `wt-verify` | 커맨드가 호출 | 검증 사다리 출력 + 무엇이 돌았는지 점호 |
-| `wt-todo`, `wt-new` | PATH 실행파일 | todo/워크트리의 셸 진입점 |
+| `wt-todo`, `wt-new`, `wt-restage` | PATH 실행파일 | todo/워크트리/합본의 셸 진입점 |
 
 ## 요구사항
 
@@ -26,7 +27,8 @@
   `.claude/wt.json`을 읽는 데 쓴다. 없으면 설정을 못 읽어 조용히 절반만 프로비저닝될 수
   있으므로, 그 경우 스크립트가 경고를 낸다. `plan-nudge`는 jq가 없으면 그냥 침묵한다.
 - `git` 2.x, `bash`. macOS 기준이지만 `flock` 같은 GNU 전용 도구는 쓰지 않는다.
-- `gh` — `/wt:remote-push`의 PR 단계에만 필요하다.
+- `gh` — `/wt:remote-push`의 PR 단계와 `/wt:restage` 전체에 필요하다. 후자는 "지금 열려
+  있는 PR"이 무엇인지를 GitHub에만 물을 수 있어서, 없으면 아예 돌지 않는다.
 
 ## 쓰는 법
 
@@ -169,6 +171,11 @@ claude plugin install wt@claude-workflows --scope user     # ← 한 번만
     "copy":  [".env.local"],            // 그대로 복사할 gitignore 파일
     "mkdir": ["src/generated"],         // 생성기가 스스로 못 만드는 디렉터리
     "run":   ["make codegen"]           // 최초 프로비저닝 때 한 번 실행
+  },
+  "staging": {                          // 아래 "/wt:restage" 절. 전부 생략 가능
+    "branch": "staging",                // 생략 시 staging
+    "urls": ["https://…"],              // 재구축 뒤 찍어줄 주소. 생략 시 안 찍는다
+    "mergeMethod": "merge"              // --merge가 쓸 방식. 생략 시 merge
   },
   "verify": [ /* 아래 "검증 사다리" 절 */ ]
 }
@@ -383,6 +390,80 @@ APFS `cp -c`는 copy-on-write라 수 GB짜리 `node_modules`를 복제해도 실
 
 왜 이 모양인지(독립성 등급, 비용 모델, 완전 자동 루프의 함정, CI로 올리는 법)는
 [`docs/review-loop.md`](../../docs/review-loop.md).
+
+## `/wt:restage` — staging은 열린 PR 전부의 합본
+
+PR마다 스테이징 URL을 하나씩 줄 수 없는 환경이 있다. 미리보기 호스트네임이 매번 바뀌면
+CORS·OAuth 리다이렉트·웹훅처럼 **주소를 정확히 일치시켜 등록해 둔 것들**이 전부 어긋나기
+때문이다. 그러면 고정 URL 하나를 쓰게 되고, **동시에 열린 PR 둘이 그 하나를 두고 경합한다** —
+나중 빌드가 이긴다.
+
+그 URL이 보는 브랜치를 "가장 최근에 푸시된 것"이 아니라 **"지금 열려 있는 PR 전부의 합본"**
+으로 바꾼다.
+
+```bash
+/wt:restage             # staging = base + 열린 PR 전부. 다시 만들어 force push
+/wt:restage --merge     # 그 합본이 담고 있는 PR들을 base에 머지
+```
+
+**브랜치는 계속 base에서 딴다. PR도 base를 향한다. 하나씩 머지된다.** 아무것도 바뀌지
+않는다 — 추가되는 것은 `staging` ref 하나뿐이고, 스크립트가 쓰는 것도 그것 하나다.
+그래서 PR을, 브랜치를, 남의 체크아웃을 건드릴 수단이 없다.
+
+- **아무것도 staging에서 나가지 않는다.** 승격도 back-merge도 없다. 그래서 급한 PR 하나를
+  QA 없이 base에 바로 머지해도 기억할 것이 생기지 않는다 — 다음 재구축이 base에서 다시
+  시작하므로 저절로 따라잡는다.
+- **스스로 정리된다.** 머지·폐기된 PR은 열린 목록에서 빠지므로 다음 회차에 그냥 없다.
+- **충돌한 브랜치는 그 회차에서 빠지고 이름이 찍힌다. 멈추지 않는다.** 멈추면 PR 하나가
+  나머지 전부의 QA를 막는다. 자동 해결도 하지 않는다 — 아무도 리뷰하지 않은 머지가 생긴다.
+  그 대신 **충돌이 조기 경보가 된다**: base에 머지될 때가 아니라 여기서 드러난다.
+- PR 번호 오름차순으로 접는다. 같은 열린 집합이면 항상 같은 트리가 나온다.
+- 임시 detached 워크트리에서 돌고 로컬 `staging` 브랜치를 만들지 않는다 — 어느 워크트리에서
+  쳐도 되고, 썩을 로컬 참조가 남지 않는다.
+
+### `--merge`가 기대는 것 — 합본이 자기 명세를 갖고 있다
+
+접을 때마다 머지 커밋 제목을 `restage: #<번호> <브랜치>`로 찍고, 그 커밋의 **두 번째 부모**가
+그때 올라간 head다. 상태 파일이 없어도 `wt-restage manifest`가 합본의 구성을 그대로 복원할 수
+있는 이유이고, **`--merge`의 유일한 안전장치**가 여기서 나온다:
+
+| 상태 | 뜻 | `--merge` |
+|---|---|---|
+| `ok` | 열려 있고 PR head == 합본에 오른 sha | **머지한다** |
+| `stale` | 마지막 재구축 뒤 그 브랜치에 커밋이 밀렸다 | 뺀다 |
+| `draft` | 초안 | 뺀다 |
+| `gone` | 이미 머지됐거나 닫혔다 | 뺀다 |
+
+**`stale`을 거르지 않는 `--merge`는 만들면 안 된다.** 그건 "staging에 올라간 적 없는 코드를
+한 번에 N개 머지하는 버튼"이고, QA했다는 근거가 바로 거기서 무너진다.
+
+나머지 둘은 커맨드가 사람에게 묻는다 — **N건 머지 = 배포 N회**라는 것과, 머지 *전에* 해야 할
+일(프로덕션 마이그레이션 같은)이 끝났는지. 플러그인은 그게 무엇인지 모르고, 레포의
+`CLAUDE.md`가 안다. 머지가 끝나면 재구축을 한 번 더 돌아 합본을 새 base 기준으로 맞춘다.
+
+### 이 모양의 이름 — integration branch
+
+지어낸 것이 아니다. **git.git이 자기 브랜치를 부르는 말 그대로다.** 장수 브랜치가 넷 있고
+(`maint`·`master`·`next`·`seen`), 그중 **`seen`**(예전 이름 `pu`, *proposed updates*)은
+"`next`에 머지된 토픽 전부를 담되 **`master` 위에 직접 재구축된다**". 밖으로 머지되지 않고
+매번 버려진다.
+
+**linux-next**가 같은 것을 매일 한다 — mainline + 200개가 넘는 서브시스템 트리를 날마다 다시
+머지해 force push하는 throwaway 브랜치이고, Linus는 linux-next를 당기지 않고 **서브시스템
+트리를 하나씩** 당긴다. PR을 base에 하나씩 머지하는 것과 구조가 같다.
+
+자동화된 형태가 **merge queue**다. GitHub 문서 그대로 — 큐는 base의 최신 변경과 **큐에 이미
+있는 다른 PR들의 변경과** 당신의 PR을 담은 임시 브랜치를 만든다(`gh-readonly-queue/<base>`).
+Rust의 **bors/homu**, OpenStack **Zuul**의 *speculative merge*가 같은 계열이다.
+
+**즉 `/wt:restage`는 손으로 도는 merge queue다.** 손으로 도는 이유는 GitHub 내장 merge
+queue가 branch protection을 요구하고, 그것이 없는 레포(무료 플랜의 private 등)에서는 API가
+403을 주기 때문이다. 그런 레포에서도 같은 성질을 얻는 것이 이 커맨드의 존재 이유다.
+
+**반대편(승격형)과는 양자택일이다.** Gitflow의 `develop`/`release/*`처럼 staging에 쌓았다가
+base로 승격하는 방식은 히스토리를 재작성하지 않는 대신 back-merge를 사람이 기억해야 하고,
+독립 배포와 충돌한다. 여기는 매 회차 히스토리를 다시 쓰므로 `staging → base` 승격 PR이
+성립하지 않는다. 릴리스를 *관리*하려면 그쪽이고, 통합을 *미리 보려면* 이쪽이다.
 
 ## plan-nudge
 
