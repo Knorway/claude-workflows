@@ -4,7 +4,8 @@ Claude Code 플러그인 마켓플레이스. 지금은 플러그인 하나가 �
 
 - **[`wt`](plugins/wt/)** — git worktree 병렬 작업. 워크트리를 repo 밖에 만드는 훅,
   CoW 프로비저닝, 경합 없는 TODO 점유 커맨드(`/wt:todo`), 검증 사다리와 사람 게이트
-  (`wt-verify`), PR 커맨드(`/wt:remote-push`), 병렬 리뷰 + 반증 커맨드(`/wt:review`).
+  (`wt-verify`), PR 커맨드(`/wt:remote-push`), 병렬 리뷰 + 반증 커맨드(`/wt:review`),
+  staging을 열린 PR 전부의 합본으로 다시 만드는 통합 브랜치 커맨드(`/wt:restage`).
 
 무엇을 지향하고 무엇을 일부러 안 하는지는 [`docs/wt-design.md`](docs/wt-design.md).
 리뷰 자동화를 어디까지 밀지 고민 중이라면 [`docs/review-loop.md`](docs/review-loop.md).
