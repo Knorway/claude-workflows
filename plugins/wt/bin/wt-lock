@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# On PATH while the plugin is enabled, so a repo's package.json can call
+# `wt-lock e2e -- …` without knowing where the plugin is installed.
+exec bash "$(cd "$(dirname "$0")/../scripts" && pwd)/lock.sh" "$@"

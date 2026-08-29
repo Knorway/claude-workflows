@@ -1,8 +1,8 @@
 {
   "name": "wt",
   "displayName": "Worktree Workflow",
-  "version": "0.16.0",
-  "description": "Parallel work in git worktrees: out-of-repo worktree hooks, copy-on-write provisioning, a contention-free TODO claim command, a secret-scanning PR command, a fan-out code review that verifies findings adversarially, writes its own edge-case tests and keeps a trickster attacking the premise of the change itself, a 200-line budget on convention docs, and an integration branch that rebuilds staging as the composite of every open pull request.",
+  "version": "0.19.0",
+  "description": "Parallel work in git worktrees: out-of-repo worktree hooks, copy-on-write provisioning, a machine-wide lock so two worktrees never run the same heavy command at once, a memory/port budget the repo divides for itself, a contention-free TODO claim command, a secret-scanning PR command that only stops for what a pull request cannot undo, a fan-out code review that verifies findings adversarially, writes its own edge-case tests and keeps a trickster attacking the premise of the change itself, a 200-line budget on convention docs, a test-suite budget that weighs a browser test by what it costs rather than counting it, and an integration branch that rebuilds staging as the composite of every open pull request.",
   "author": {
     "name": "Knorway"
   },
