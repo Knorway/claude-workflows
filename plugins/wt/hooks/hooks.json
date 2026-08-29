@@ -41,6 +41,18 @@
 				]
 			}
 		],
+		"PreToolUse": [
+			{
+				"matcher": "Write|Edit|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/test-budget.sh",
+						"timeout": 10
+					}
+				]
+			}
+		],
 		"PostToolUse": [
 			{
 				"matcher": "Write|Edit|MultiEdit",
@@ -48,6 +60,11 @@
 					{
 						"type": "command",
 						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/claude-md-budget.sh",
+						"timeout": 10
+					},
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/comment-budget.sh",
 						"timeout": 10
 					}
 				]

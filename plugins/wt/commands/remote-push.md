@@ -41,7 +41,30 @@ This runs often. Keep it cheap:
 - If the branch carries earlier commits, skim those with `git log origin/<base>..HEAD
   --format='%s'` and `git diff origin/<base>...HEAD --stat` — never re-read their diffs.
 
-## 0. Review gate — before anything else
+## 0. Gates — before anything else
+
+### 0-a. A red rung stops the push
+
+```bash
+wt-verify checks 2>/dev/null | grep -E '^- .* — \*\*실패\*\*'
+```
+
+If any rung of the ladder is recorded as failed, **say which one and stop.** Do
+not commit, do not push. This is separate from the review gate below and comes
+first, because a review can be perfectly done on code whose tests are red — the
+two questions are "did someone look" and "does it work", and only the second one
+is answered here.
+
+The pattern matches `실패` and nothing else on purpose: `미실행` is not a failure,
+it is a rung nobody ran, and demanding a green ladder for every push would make
+this command unusable on the many changes that do not touch what a given rung
+covers. A rung that ran and failed is a different fact, and it is the one this
+gate exists for.
+
+`--no-review` does **not** skip this. That flag is for "the change is too small to
+review"; it was never for "ship it red".
+
+### 0-b. Review gate
 
 Unreviewed work should not become a pull request by accident. If this branch has
 not been reviewed yet, run **`/wt:review`** first, then come back here.
