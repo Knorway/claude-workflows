@@ -19,6 +19,16 @@ The base branch is `main` unless the repo says otherwise — check
 `.claude/wt.json`'s `baseBranch`, then `git symbolic-ref --short
 refs/remotes/origin/HEAD`. Everywhere below, `<base>` means that branch.
 
+## This command does not need the conversation
+
+Everything it acts on is on disk: the diff from `git`, the review verdict from the
+per-branch ledger (`wt-verify checks`), the plan from `~/.claude/plans/`. **Running
+it in a fresh session must produce the same pull request as running it at the end of
+a long one** — treat any step that would read a fact only this conversation holds as
+a defect in the step, not as a licence to use the memory. That is what makes
+`/clear` safe here, and it is why compacting a huge session before this command buys
+nothing: the summary would be spent re-deriving what the ledger already states.
+
 ## Token budget
 
 This runs often. Keep it cheap:
@@ -53,10 +63,13 @@ write it — and an unrecorded human step renders as
 the strength of the words alone. Without the filter, adding that one line to
 `wt.json` disables this gate permanently, in a way nobody would ever notice.
 
-The ledger is per-branch, so this only ever reflects work on *this* branch. Treat
-the branch as **reviewed** only if that line is there *or* you can see a
-`/wt:review` run for the current state in this conversation. **When in doubt,
-review** — a redundant run costs a few dollars; an unreviewed PR costs more.
+The ledger is per-branch, so this only ever reflects work on *this* branch. **The
+ledger is the whole answer** — treat the branch as reviewed if that line is there,
+and as unreviewed if it is not. Do not let a `/wt:review` you remember from this
+conversation stand in for a missing record: a review that did not reach step 7 did
+not finish, and the conversation is exactly the evidence a fresh session cannot
+have. **When in doubt, review** — a redundant run costs a few dollars; an
+unreviewed PR costs more.
 
 Skip the gate entirely when:
 
@@ -75,15 +88,33 @@ status it recorded says whether anything is left for a person:
   and what it left unfixed it left **deliberately**. Report its one-line summary
   and **continue to step 1 without asking.** Unfixed PLAUSIBLE is not a reason to
   stop — it was judged, and the rows are already in the report above.
-- **`review=human`** → something only a person can settle: a change that needs
-  eyes, an irreversible or credential-touching path, a broken public contract, an
-  oscillating finding, a fix it applied but could not justify in one sentence, an
-  unfixed CONFIRMED that hit the fix-generation cap, or a test-ratchet violation. Show those rows and **ask whether to push anyway.** Do
-  not push in the same turn. The gate does not block them — `human` means someone
-  looked — so this ask is the only place a person sees them before the PR exists.
-  Read the ratchet case out loud when it fires: it means the diff deletes test
-  assertions or widens the runner's scope, so the green suite this push is about
-  to rely on covers less than it did before.
+- **`review=human`** → the review left something for a person. **Which kind is in
+  the first segment of the detail**, and the two are not handled the same way:
+
+  - **`human:blocking:…`** — an irreversible or credential-touching path, a deploy
+    setting, a broken public contract. Show those rows and **ask whether to push
+    anyway. Do not push in the same turn.** The PR existing is itself part of what
+    is at stake here, so this ask is the only place a person sees them in time.
+  - **`human:notify:…`** — everything else: a change that wants eyes, an
+    oscillating finding, a fix it applied but could not justify in one sentence,
+    an unfixed CONFIRMED that hit the fix-generation cap, a test-ratchet
+    violation. **Settle these yourself and finish the push.** They are already
+    carried into the PR body — `## 확인` pipes `wt-verify checks`, which renders a
+    `human` row as a real GitHub checkbox — so the person reads them beside the
+    diff, which is where that judgement can actually be made. Say in one line at
+    the end of your report that they are there.
+  - **no grade at all** (a bare `human:…`, or a review recorded before grades
+    existed) → **treat it as `blocking`.** Wrong in the safe direction.
+
+  **Why the split.** Every one of these used to stop the push and ask. In practice
+  that meant the person waited out a long review on a loaded machine and was then
+  asked to hand the judgement back — every time, in the same words. The ones worth
+  stopping for are the ones a PR cannot be un-created for; the rest are better read
+  in the PR than in terminal scrollback, which scrolls away.
+
+  Read the ratchet case out loud when it fires, whichever grade it carries: it
+  means the diff deletes test assertions or widens the runner's scope, so the green
+  suite this push is about to rely on covers less than it did before.
 
 **Do not re-ask about anything `ok` covers.** Asking on every plausible finding is
 what this triage replaced; putting the ask back here restores it wholesale, since
@@ -252,9 +283,9 @@ edited it by hand.
 Otherwise assemble the body. Prefer the **plan + result** shape — that is the
 record the user actually wants, not a diff summary. Body sections (Korean):
 
-- **`## 플랜`** — the plan this work executed. Locate it: a path in `$ARGUMENTS`
-  wins; else the newest `~/.claude/plans/*.md`. `cat` it straight into the body
-  via the pipe below so its (possibly thousands of) characters bypass your tokens.
+- **`## 플랜`** — the plan this work executed. Locate it with the **plan file rule**
+  below and `cat` it straight into the body via the pipe below, so its (possibly
+  thousands of) characters bypass your tokens.
 - **`## 결과`** — a short prose summary of what was actually done and how it turned
   out — the same thing you'd report to the user. **This is the only part you write.**
 - **`## 확인`** — the roll call from `wt-verify checks`, piped in like the plan so
@@ -262,6 +293,26 @@ record the user actually wants, not a diff summary. Body sections (Korean):
   anything unrecorded with `미실행`, which is the point: an omission shows up as a
   line instead of a silence. Emit the block whenever `wt-verify checks` produces
   output — only drop it when the command prints nothing (no ladder, no notes).
+
+**The plan file rule** — `/wt:review` resolves the same file the same way, so fix it
+in one place and both agree:
+
+```bash
+plan_file() {
+	[ -n "$plan_path" ] && { printf '%s\n' "$plan_path"; return; }
+	P=~/.claude/plans/"$(basename "$(git rev-parse --show-toplevel)")".md
+	[ -f "$P" ] && { printf '%s\n' "$P"; return; }
+	ls -t ~/.claude/plans/*.md 2>/dev/null | grep -v -- '-agent-' | head -1
+}
+```
+
+**Do not go back to `ls -t … | head -1` alone.** Claude Code names a session's plan
+after the directory it runs in, but **subagents write their plans into that same
+directory** with a `-agent-<id>` suffix — observed live: `quirky-napping-church.md`
+and `quirky-napping-church-agent-a765dd8128494af1d.md`, the agent's file second-newest
+by mtime. A `/wt:review` fan-out is enough to make the newest file the wrong one, and
+the failure is silent: the PR carries a plan for work it does not contain. Hence
+**basename first, mtime only as the last resort, and never an `-agent-` file.**
 
 If the work was **not** plan-driven (no plan file fits), fall back to the old
 diff-derived body instead: `## 변경 내용` (3~6 bullets of what/why, from the
@@ -276,7 +327,7 @@ one-commit branch — commits stay English (step 3), only the PR surface is Kore
 One short line. Assemble by **piping files, never re-emitting them**:
 
 ```bash
-PLAN="${plan_path:-$(ls -t ~/.claude/plans/*.md 2>/dev/null | head -1)}"
+PLAN=$(plan_file)   # the rule above — basename first, never an `-agent-` file
 {
 	if [ -n "$PLAN" ] && [ -f "$PLAN" ]; then printf '## 플랜\n\n'; cat "$PLAN"; printf '\n'; fi
 	printf '## 결과\n\n'; cat <<'RESULT'
@@ -294,8 +345,14 @@ The `cat "$PLAN"` carries the whole plan into the PR at ~zero token cost, and
 **Human gates.** `wt-verify checks` renders a `[사람 확인 필요]` step as a real
 GitHub checkbox (`- [ ] …`), so the gate lives where the reviewer already is. If
 any such line came back, **repeat it as the last line of your terminal report**
-too — the user may not open the PR right away — and do not call the work done.
+too — the user may not open the PR right away.
 Never let an unticked gate block the push; reporting it is the whole mechanism.
+
+A `human:notify:…` row is **not** a reason to withhold "done". It was judged in
+step 0, the push happened because of that judgement, and the checkbox is where it
+now waits — saying the work is unfinished would put the ask back one step later,
+which is the thing step 0 stopped doing. A `blocking` row never reaches here: it
+stopped the push in step 0.
 
 Report the PR URL. If `gh pr create` fails, **run step 7 anyway**, then report the
 failure as-is and stop — the commit and the push already landed, so nothing gets
