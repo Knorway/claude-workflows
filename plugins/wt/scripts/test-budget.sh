@@ -37,6 +37,10 @@ path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty')
 { [ -n "$cwd" ] && [ -d "$cwd" ]; } || cwd=$(dirname "$path")
 
+# The CURRENT checkout's config, deliberately — `verify.sh` prefers the primary
+# checkout's copy instead. The ladder wants stable commands across worktrees; a
+# budget wants the branch you are standing on, so that a branch which changes the
+# budget takes effect where the editing is happening rather than after merge.
 root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
 cfg="$root/.claude/wt.json"
 [ -f "$cfg" ] || exit 0
