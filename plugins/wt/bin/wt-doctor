@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# On PATH while the plugin is enabled, so you can ask what is still running
+# without knowing where the plugin is installed.
+exec bash "$(cd "$(dirname "$0")/../scripts" && pwd)/doctor.sh" "$@"
